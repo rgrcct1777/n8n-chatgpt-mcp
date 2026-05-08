@@ -1,8 +1,15 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
+import * as path from 'path';
 import { JsonRpcRequest, JsonRpcResponse, JsonRpcError, McpTool, McpToolResult, McpServerInfo, StreamingClient } from '../types/mcp';
 import { N8nClient } from './n8n-client';
 import { config } from '../config';
+
+const NOTES_DIR = process.env.NOTES_DIR || path.join(process.cwd(), 'data', 'notes');
+if (!fs.existsSync(NOTES_DIR)) {
+  fs.mkdirSync(NOTES_DIR, { recursive: true });
+}
 
 export class McpServer extends EventEmitter {
   private n8nClient: N8nClient;
@@ -399,7 +406,66 @@ export class McpServer extends EventEmitter {
       },
     ];
 
-    return [...legacyTools, ...enhancedTools];
+    const utilityTools: McpTool[] = [
+      {
+        name: 'utility_get_datetime',
+        description: 'Get the current date, time, day of week, and timezone',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'utility_fetch_url',
+        description: 'Fetch and return the text content of any URL or webpage',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'The URL to fetch' },
+            maxLength: { type: 'number', description: 'Max characters to return (default 5000)' },
+          },
+          required: ['url'],
+        },
+      },
+      {
+        name: 'utility_take_note',
+        description: 'Save a note with a name and content for later retrieval',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Short name/title for the note (used as filename)' },
+            content: { type: 'string', description: 'The note content to save' },
+          },
+          required: ['name', 'content'],
+        },
+      },
+      {
+        name: 'utility_list_notes',
+        description: 'List all saved notes by name',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'utility_read_note',
+        description: 'Read the content of a saved note by name',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'The name of the note to read' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'utility_delete_note',
+        description: 'Delete a saved note by name',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'The name of the note to delete' },
+          },
+          required: ['name'],
+        },
+      },
+    ];
+
+    return [...legacyTools, ...enhancedTools, ...utilityTools];
   }
 
   public async handleRequest(request: JsonRpcRequest): Promise<JsonRpcResponse> {
@@ -529,6 +595,18 @@ export class McpServer extends EventEmitter {
         return await this.healthCheck();
       case 'n8n_trigger_webhook_workflow':
         return await this.triggerWebhook(args);
+      case 'utility_get_datetime':
+        return this.utilityGetDatetime();
+      case 'utility_fetch_url':
+        return await this.utilityFetchUrl(args.url, args.maxLength);
+      case 'utility_take_note':
+        return this.utilityTakeNote(args.name, args.content);
+      case 'utility_list_notes':
+        return this.utilityListNotes();
+      case 'utility_read_note':
+        return this.utilityReadNote(args.name);
+      case 'utility_delete_note':
+        return this.utilityDeleteNote(args.name);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -996,6 +1074,80 @@ export class McpServer extends EventEmitter {
         current = current[segment];
       }
     }
+  }
+
+  private utilityGetDatetime(): McpToolResult {
+    const now = new Date();
+    const result = {
+      iso: now.toISOString(),
+      date: now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      dayOfWeek: now.toLocaleDateString('en-US', { weekday: 'long' }),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      unixTimestamp: Math.floor(now.getTime() / 1000),
+    };
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+
+  private async utilityFetchUrl(url: string, maxLength = 5000): Promise<McpToolResult> {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RightAPI-MCP/1.0)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const contentType = response.headers.get('content-type') || '';
+    let text = await response.text();
+    if (contentType.includes('text/html')) {
+      text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                 .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                 .replace(/<[^>]+>/g, ' ')
+                 .replace(/\s{2,}/g, ' ')
+                 .trim();
+    }
+    if (text.length > maxLength) {
+      text = text.slice(0, maxLength) + `\n\n[truncated — ${text.length - maxLength} more characters]`;
+    }
+    return { content: [{ type: 'text', text }] };
+  }
+
+  private utilityTakeNote(name: string, content: string): McpToolResult {
+    const safeName = name.replace(/[^a-zA-Z0-9_\-. ]/g, '_').trim();
+    const filePath = path.join(NOTES_DIR, `${safeName}.txt`);
+    const timestamp = new Date().toISOString();
+    fs.writeFileSync(filePath, `# ${name}\nSaved: ${timestamp}\n\n${content}`, 'utf8');
+    return { content: [{ type: 'text', text: `Note "${name}" saved successfully.` }] };
+  }
+
+  private utilityListNotes(): McpToolResult {
+    const files = fs.existsSync(NOTES_DIR)
+      ? fs.readdirSync(NOTES_DIR).filter(f => f.endsWith('.txt')).map(f => f.replace('.txt', ''))
+      : [];
+    const text = files.length > 0
+      ? `Saved notes (${files.length}):\n${files.map(f => `  - ${f}`).join('\n')}`
+      : 'No notes saved yet.';
+    return { content: [{ type: 'text', text }] };
+  }
+
+  private utilityReadNote(name: string): McpToolResult {
+    const safeName = name.replace(/[^a-zA-Z0-9_\-. ]/g, '_').trim();
+    const filePath = path.join(NOTES_DIR, `${safeName}.txt`);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Note "${name}" not found. Use utility_list_notes to see available notes.`);
+    }
+    const content = fs.readFileSync(filePath, 'utf8');
+    return { content: [{ type: 'text', text: content }] };
+  }
+
+  private utilityDeleteNote(name: string): McpToolResult {
+    const safeName = name.replace(/[^a-zA-Z0-9_\-. ]/g, '_').trim();
+    const filePath = path.join(NOTES_DIR, `${safeName}.txt`);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Note "${name}" not found.`);
+    }
+    fs.unlinkSync(filePath);
+    return { content: [{ type: 'text', text: `Note "${name}" deleted.` }] };
   }
 
   private createErrorResponse(id: string | number | null, code: number, message: string): JsonRpcResponse {
