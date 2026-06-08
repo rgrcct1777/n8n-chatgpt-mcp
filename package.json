@@ -5,6 +5,10 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
+    "agent:lm": "node scripts/lm-agent.mjs",
+    "eval:apple": "node scripts/openai-apple-eval.mjs",
+    "eval:apple:live": "sh scripts/run-openai-apple-eval.sh",
+    "safety:apple": "node scripts/apple-mcp-safety-check.mjs",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",

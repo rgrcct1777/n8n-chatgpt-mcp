@@ -5,8 +5,8 @@
  * - Calendar: create and list events
  * - Reminders: create, list, and complete reminders
  * - Notes: create and read notes
- * - Mail: send emails via Mail app
- * - Messages: send iMessages
+ * - Mail: prepare or send emails via Mail app
+ * - Messages: prepare or send iMessages
  *
  * USAGE WITH CLAUDE DESKTOP:
  * Add to ~/Library/Application Support/Claude/claude_desktop_config.json:
@@ -25,10 +25,20 @@
 
 'use strict';
 
-const { execSync, exec } = require('child_process');
+const { execSync } = require('child_process');
 const http = require('http');
 
+const EXTERNAL_SENDS_ENABLED = process.env.APPLE_MCP_ALLOW_EXTERNAL_SEND === '1';
+
 // ─── AppleScript helpers ──────────────────────────────────────────────────────
+
+function asAppleScriptString(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
+}
 
 function runAppleScript(script) {
   try {
@@ -40,6 +50,21 @@ function runAppleScript(script) {
   } catch (err) {
     throw new Error(`AppleScript error: ${err.stderr || err.message}`);
   }
+}
+
+function requireExternalSendConfirmation(kind, payload) {
+  return {
+    status: 'confirmation_required',
+    delivery: 'not_sent',
+    kind,
+    message: [
+      `${kind} was not sent.`,
+      'External communication is disabled by default.',
+      'Only send after the user has reviewed the exact recipient and content.',
+      'To send, start the server with APPLE_MCP_ALLOW_EXTERNAL_SEND=1 and call this tool with confirmSend: true.',
+    ].join(' '),
+    preview: payload,
+  };
 }
 
 // ─── Tool implementations ──────────────────────────────────────────────────────
@@ -65,14 +90,14 @@ function apple_calendar_create_event({ title, startDate, endDate, notes = '', ca
   const endStr = end.toLocaleString('en-US');
 
   const calClause = calendarName
-    ? `set targetCal to calendar "${calendarName}"`
+    ? `set targetCal to calendar "${asAppleScriptString(calendarName)}"`
     : 'set targetCal to default calendar of application "Calendar"';
 
   const script = `
     tell application "Calendar"
       ${calClause}
-      set newEvent to make new event at end of events of targetCal with properties {summary:"${title.replace(/"/g, '\\"')}", start date:date "${startStr}", end date:date "${endStr}", description:"${notes.replace(/"/g, '\\"')}"}
-      return "Created event: ${title.replace(/"/g, '\\"')}"
+      set newEvent to make new event at end of events of targetCal with properties {summary:"${asAppleScriptString(title)}", start date:date "${asAppleScriptString(startStr)}", end date:date "${asAppleScriptString(endStr)}", description:"${asAppleScriptString(notes)}"}
+      return "Created event: ${asAppleScriptString(title)}"
     end tell
   `;
   const result = runAppleScript(script);
@@ -86,7 +111,7 @@ function apple_calendar_list_events({ days = 7, calendarName = '' } = {}) {
   const futureStr = future.toLocaleString('en-US');
 
   const calClause = calendarName
-    ? `set targetCals to {calendar "${calendarName}"}`
+    ? `set targetCals to {calendar "${asAppleScriptString(calendarName)}"}`
     : 'set targetCals to calendars';
 
   const script = `
@@ -94,7 +119,7 @@ function apple_calendar_list_events({ days = 7, calendarName = '' } = {}) {
       ${calClause}
       set eventList to {}
       repeat with aCal in targetCals
-        set calEvents to (every event of aCal whose start date >= date "${nowStr}" and start date <= date "${futureStr}")
+        set calEvents to (every event of aCal whose start date >= date "${asAppleScriptString(nowStr)}" and start date <= date "${asAppleScriptString(futureStr)}")
         repeat with anEvent in calEvents
           set end of eventList to (summary of anEvent & " | " & (start date of anEvent as string))
         end repeat
@@ -111,19 +136,19 @@ function apple_reminders_create({ title, dueDate = '', listName = '', notes = ''
   if (!title) throw new Error('title is required');
 
   const dueLine = dueDate
-    ? `set due date of newReminder to date "${new Date(dueDate).toLocaleString('en-US')}"`
+    ? `set due date of newReminder to date "${asAppleScriptString(new Date(dueDate).toLocaleString('en-US'))}"`
     : '';
 
   const listClause = listName
-    ? `set targetList to list "${listName}" of application "Reminders"`
+    ? `set targetList to list "${asAppleScriptString(listName)}" of application "Reminders"`
     : 'set targetList to default list of application "Reminders"';
 
   const script = `
     tell application "Reminders"
       ${listClause}
-      set newReminder to make new reminder at end of reminders of targetList with properties {name:"${title.replace(/"/g, '\\"')}", body:"${notes.replace(/"/g, '\\"')}"}
+      set newReminder to make new reminder at end of reminders of targetList with properties {name:"${asAppleScriptString(title)}", body:"${asAppleScriptString(notes)}"}
       ${dueLine}
-      return "Created reminder: ${title.replace(/"/g, '\\"')}"
+      return "Created reminder: ${asAppleScriptString(title)}"
     end tell
   `;
   return { message: runAppleScript(script), title };
@@ -131,7 +156,7 @@ function apple_reminders_create({ title, dueDate = '', listName = '', notes = ''
 
 function apple_reminders_list({ listName = '', showCompleted = false } = {}) {
   const listClause = listName
-    ? `set targetList to list "${listName}" of application "Reminders"`
+    ? `set targetList to list "${asAppleScriptString(listName)}" of application "Reminders"`
     : 'set targetList to default list of application "Reminders"';
 
   const completedFilter = showCompleted ? '' : 'whose completed is false';
@@ -156,18 +181,18 @@ function apple_reminders_complete({ title, listName = '' }) {
   if (!title) throw new Error('title is required');
 
   const listClause = listName
-    ? `set targetList to list "${listName}" of application "Reminders"`
+    ? `set targetList to list "${asAppleScriptString(listName)}" of application "Reminders"`
     : 'set targetList to default list of application "Reminders"';
 
   const script = `
     tell application "Reminders"
       ${listClause}
-      set theReminders to reminders whose name is "${title.replace(/"/g, '\\"')}" and completed is false
+      set theReminders to reminders whose name is "${asAppleScriptString(title)}" and completed is false
       if (count of theReminders) > 0 then
         set completed of (item 1 of theReminders) to true
-        return "Marked complete: ${title.replace(/"/g, '\\"')}"
+        return "Marked complete: ${asAppleScriptString(title)}"
       else
-        return "Reminder not found: ${title.replace(/"/g, '\\"')}"
+        return "Reminder not found: ${asAppleScriptString(title)}"
       end if
     end tell
   `;
@@ -179,14 +204,14 @@ function apple_notes_create({ title, content, folderName = '' }) {
   if (!content) throw new Error('content is required');
 
   const folderClause = folderName
-    ? `set targetFolder to folder "${folderName}" of application "Notes"`
+    ? `set targetFolder to folder "${asAppleScriptString(folderName)}" of application "Notes"`
     : 'set targetFolder to default folder of application "Notes"';
 
   const script = `
     tell application "Notes"
       ${folderClause}
-      make new note at targetFolder with properties {name:"${title.replace(/"/g, '\\"')}", body:"<div><b>${title.replace(/"/g, '\\"')}</b></div><div>${content.replace(/"/g, '\\"').replace(/\n/g, '</div><div>')}</div>"}
-      return "Created note: ${title.replace(/"/g, '\\"')}"
+      make new note at targetFolder with properties {name:"${asAppleScriptString(title)}", body:"<div><b>${asAppleScriptString(title)}</b></div><div>${asAppleScriptString(String(content).replace(/\n/g, '</div><div>'))}</div>"}
+      return "Created note: ${asAppleScriptString(title)}"
     end tell
   `;
   return { message: runAppleScript(script), title };
@@ -194,7 +219,7 @@ function apple_notes_create({ title, content, folderName = '' }) {
 
 function apple_notes_list({ folderName = '' } = {}) {
   const folderClause = folderName
-    ? `set targetFolder to folder "${folderName}" of application "Notes"`
+    ? `set targetFolder to folder "${asAppleScriptString(folderName)}" of application "Notes"`
     : 'set targetFolder to default folder of application "Notes"';
 
   const script = `
@@ -212,43 +237,53 @@ function apple_notes_list({ folderName = '' } = {}) {
   return { count: notes.length, notes };
 }
 
-function apple_mail_send({ to, subject, body, ccAddress = '' }) {
+function apple_mail_send({ to, subject, body, ccAddress = '', confirmSend = false }) {
   if (!to) throw new Error('to (recipient email) is required');
   if (!subject) throw new Error('subject is required');
   if (!body) throw new Error('body is required');
 
-  const ccLine = ccAddress ? `make new to recipient at end of cc recipients with properties {address:"${ccAddress}"}` : '';
+  const preview = { to, ccAddress, subject, body };
+  if (!EXTERNAL_SENDS_ENABLED || confirmSend !== true) {
+    return requireExternalSendConfirmation('email', preview);
+  }
+
+  const ccLine = ccAddress ? `make new cc recipient at end of cc recipients of newMsg with properties {address:"${asAppleScriptString(ccAddress)}"}` : '';
 
   const script = `
     tell application "Mail"
-      set newMsg to make new outgoing message with properties {subject:"${subject.replace(/"/g, '\\"')}", content:"${body.replace(/"/g, '\\"')}"}
-      make new to recipient at end of to recipients of newMsg with properties {address:"${to}"}
+      set newMsg to make new outgoing message with properties {subject:"${asAppleScriptString(subject)}", content:"${asAppleScriptString(body)}"}
+      make new to recipient at end of to recipients of newMsg with properties {address:"${asAppleScriptString(to)}"}
       ${ccLine}
       send newMsg
-      return "Email sent to ${to}"
+      return "Email sent to ${asAppleScriptString(to)}"
     end tell
   `;
-  return { message: runAppleScript(script), to, subject };
+  return { status: 'sent', message: runAppleScript(script), to, subject };
 }
 
-function apple_messages_send({ phoneOrEmail, message }) {
+function apple_messages_send({ phoneOrEmail, message, confirmSend = false }) {
   if (!phoneOrEmail) throw new Error('phoneOrEmail is required');
   if (!message) throw new Error('message is required');
+
+  const preview = { phoneOrEmail, message };
+  if (!EXTERNAL_SENDS_ENABLED || confirmSend !== true) {
+    return requireExternalSendConfirmation('iMessage', preview);
+  }
 
   const script = `
     tell application "Messages"
       set targetService to 1st account whose service type = iMessage
-      set targetBuddy to participant "${phoneOrEmail}" of targetService
-      send "${message.replace(/"/g, '\\"')}" to targetBuddy
-      return "iMessage sent to ${phoneOrEmail}"
+      set targetBuddy to participant "${asAppleScriptString(phoneOrEmail)}" of targetService
+      send "${asAppleScriptString(message)}" to targetBuddy
+      return "iMessage sent to ${asAppleScriptString(phoneOrEmail)}"
     end tell
   `;
-  return { message: runAppleScript(script), to: phoneOrEmail };
+  return { status: 'sent', message: runAppleScript(script), to: phoneOrEmail };
 }
 
 function apple_open_app({ appName }) {
   if (!appName) throw new Error('appName is required');
-  runAppleScript(`tell application "${appName}" to activate`);
+  runAppleScript(`tell application "${asAppleScriptString(appName)}" to activate`);
   return { message: `Opened ${appName}` };
 }
 
@@ -348,7 +383,7 @@ const TOOLS = [
   },
   {
     name: 'apple_mail_send',
-    description: 'Send an email using Apple Mail',
+    description: 'Prepare or send an email using Apple Mail. By default this returns a confirmation-required preview and does not send. To send, the server must be started with APPLE_MCP_ALLOW_EXTERNAL_SEND=1 and confirmSend must be true after the user reviews the exact recipient and content.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -356,18 +391,20 @@ const TOOLS = [
         subject: { type: 'string', description: 'Email subject' },
         body: { type: 'string', description: 'Email body text' },
         ccAddress: { type: 'string', description: 'CC email address (optional)' },
+        confirmSend: { type: 'boolean', description: 'Set true only after the user explicitly confirms the exact recipient and content. Server must also have APPLE_MCP_ALLOW_EXTERNAL_SEND=1.' },
       },
       required: ['to', 'subject', 'body'],
     },
   },
   {
     name: 'apple_messages_send',
-    description: 'Send an iMessage using the Messages app',
+    description: 'Prepare or send an iMessage using the Messages app. By default this returns a confirmation-required preview and does not send. To send, the server must be started with APPLE_MCP_ALLOW_EXTERNAL_SEND=1 and confirmSend must be true after the user reviews the exact recipient and content.',
     inputSchema: {
       type: 'object',
       properties: {
         phoneOrEmail: { type: 'string', description: 'Phone number or Apple ID email of recipient' },
         message: { type: 'string', description: 'Message text to send' },
+        confirmSend: { type: 'boolean', description: 'Set true only after the user explicitly confirms the exact recipient and content. Server must also have APPLE_MCP_ALLOW_EXTERNAL_SEND=1.' },
       },
       required: ['phoneOrEmail', 'message'],
     },

@@ -91,5 +91,8 @@ temp/
 *auth*
 .credentials
 
+# Local/generated eval run state
+evals/**/.last-run.json
+
 # Local packages/binaries
 *.deb
