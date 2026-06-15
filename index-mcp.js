@@ -5,9 +5,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import coreModule from './dist/services/mcp-server.js';
-
-const { McpServer } = coreModule;
+import { McpServer } from './dist/services/mcp-server.js';
 const core = new McpServer();
 
 const server = new Server(

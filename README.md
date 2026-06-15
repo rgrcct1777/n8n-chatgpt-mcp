@@ -4,6 +4,66 @@
 
 Works over HTTP(S) using SSE or WebSocket and provides an OAuth flow for browsers. SSE mode is compatible with ChatGPT Connectors, and OAuth/SSE modes work with Claude web.
 
+## Local Setup (macOS / no Docker)
+
+**What this app does:** An MCP (Model Context Protocol) server that lets AI assistants (Claude, ChatGPT, Codex) control your N8N automation workflows over HTTP/SSE/WebSocket.
+
+**Project type:** Node.js + TypeScript backend (Express). Not a browser app — it runs as a local server.
+
+**Prerequisites:** Node.js 20+ and npm.
+
+### Install
+
+```bash
+cd ~/Projects/n8n-chatgpt-mcp
+npm install
+cp .env.example .env   # then edit .env with your values
+npm run build
+```
+
+### Run
+
+```bash
+# OAuth mode (default) — admin UI at http://localhost:3007/admin
+node start.js
+
+# Or use npm scripts:
+npm run dev          # TypeScript Express server (port 3004)
+npm start            # Built TypeScript server (dist/index.js)
+MCP_MODE=sse node start.js   # SSE mode for ChatGPT Connectors
+MCP_MODE=ws node start.js    # WebSocket mode
+```
+
+### Environment variables (`.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PORT` | No | Server port (default `3007` for OAuth mode) |
+| `MCP_MODE` | No | `oauth` (default), `sse`, or `ws` |
+| `N8N_HOST` | For N8N tools | Your N8N instance URL (e.g. `http://localhost:5678`) |
+| `N8N_API_KEY` | For N8N tools | N8N API key from Settings → API |
+| `ADMIN_USERNAME` | No | Admin dashboard login (default `admin`) |
+| `ADMIN_PASSWORD` | No | Admin dashboard password (change in production) |
+| `SESSION_SECRET` | Production | Session signing secret |
+| `JWT_SECRET` | Production | JWT signing secret |
+| `CORS_ORIGIN` | Production | Allowed origins (comma-separated) |
+
+See `.env.example` for the full list.
+
+### Tests
+
+```bash
+npm test
+```
+
+### Known issues (local dev)
+
+- **N8N connection required for workflow tools** — the server starts without N8N, but workflow tools fail until `N8N_HOST` and `N8N_API_KEY` are set.
+- **35 npm audit vulnerabilities** — mostly in dev dependencies; run `npm audit` to review before production.
+- **Jest may hang** — use `npm test -- --forceExit` if tests don't exit cleanly.
+- **Auth source files were missing** — minimal stubs were added under `src/middleware/` and `src/routes/` so the project builds; full OAuth is in `oauth-mcp-server.mjs`.
+- **Data directory** — local runs store config in `./data/` (Docker uses `/app/data`).
+
 ## 📚 Table of Contents
 
 - [🎯 What Makes This Special](#-what-makes-this-special)

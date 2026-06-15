@@ -5,11 +5,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import http from 'http';
 import { randomUUID } from 'crypto';
-import coreModule from './dist/services/mcp-server.js';
-import clientModule from './dist/services/n8n-client.js';
-
-const { McpServer } = coreModule;
-const { N8nClient } = clientModule;
+import { McpServer } from './dist/services/mcp-server.js';
+import { N8nClient } from './dist/services/n8n-client.js';
 
 // N8N Configuration
 const N8N_HOST = process.env.N8N_HOST || 'https://app.right-api.com';

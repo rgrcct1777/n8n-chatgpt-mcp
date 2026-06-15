@@ -89,6 +89,10 @@ temp/
 *password*
 *token*
 *auth*
+!src/middleware/auth.ts
+!src/routes/auth.ts
+!src/routes/oauth.ts
+!src/services/auth-service.ts
 .credentials
 
 # Local packages/binaries

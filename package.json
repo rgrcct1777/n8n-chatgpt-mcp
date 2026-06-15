@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({type:'commonjs'}))\"",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "start:ws": "node mcp-ws-server.js",

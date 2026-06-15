@@ -9,21 +9,20 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import coreModule from './dist/services/mcp-server.js';
-import clientModule from './dist/services/n8n-client.js';
-import hostManagerModule from './dist/services/oauth-host-manager.js';
+import { createRequire } from 'node:module';
 
-const { McpServer } = coreModule;
-const { N8nClient } = clientModule;
+const require = createRequire(import.meta.url);
+const { McpServer } = require('./dist/services/mcp-server.js');
+const { N8nClient } = require('./dist/services/n8n-client.js');
 const {
   getHostById,
   getDefaultHost,
   getEnvHost,
   resolveHostForRequest,
-} = hostManagerModule;
+} = require('./dist/services/oauth-host-manager.js');
 
 // Config and persistence
-const DATA_DIR = '/app/data';
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const HOSTS_FILE = path.join(DATA_DIR, 'n8n-hosts.json');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 

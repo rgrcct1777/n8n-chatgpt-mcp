@@ -7,11 +7,8 @@ import {
   ListToolsRequestSchema,
   JSONRPCMessageSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import coreModule from './dist/services/mcp-server.js';
-import clientModule from './dist/services/n8n-client.js';
-
-const { McpServer } = coreModule;
-const { N8nClient } = clientModule;
+import { McpServer } from './dist/services/mcp-server.js';
+import { N8nClient } from './dist/services/n8n-client.js';
 
 // Basic WebSocket transport implementing MCP Transport interface
 class WebSocketServerTransport {

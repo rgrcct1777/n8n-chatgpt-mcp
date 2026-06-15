@@ -72,6 +72,7 @@ export interface N8nWorkflow {
   createdAt: string;
   updatedAt: string;
   tags?: string[];
+  settings?: Record<string, unknown>;
 }
 
 export interface N8nExecution {

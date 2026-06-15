@@ -8,11 +8,8 @@ import http from 'http';
 import url from 'url';
 import fs from 'fs';
 import path from 'path';
-import coreModule from './dist/services/mcp-server.js';
-import clientModule from './dist/services/n8n-client.js';
-
-const { McpServer } = coreModule;
-const { N8nClient } = clientModule;
+import { McpServer } from './dist/services/mcp-server.js';
+import { N8nClient } from './dist/services/n8n-client.js';
 
 // N8N Configuration (with runtime overrides + persistence)
 const N8N_HOST = process.env.N8N_HOST || 'https://app.right-api.com';
