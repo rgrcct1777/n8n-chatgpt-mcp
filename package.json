@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.7.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "connect-sqlite3": "^0.9.13",
@@ -30,7 +30,7 @@
     "passport-oauth2": "^1.8.0",
     "uuid": "^9.0.1",
     "ws": "^8.14.2",
-    "zod": "^3.25.67"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
